@@ -51,38 +51,44 @@ export const S = {
   // ── Salons ──
   async getSalon(id) {
     if (supabase) {
-      const { data } = await supabase.from('salons').select('*').eq('id', id).single()
-      if (!data) return null
-      // Hydrate related data
-      const [staff, services, bookings, clients, reviews, waitlist, notifications, templates, ooh, holidays, msgLog, campaigns] = await Promise.all([
-        supabase.from('staff').select('*').eq('salon_id', id),
-        supabase.from('services').select('*').eq('salon_id', id),
-        supabase.from('bookings').select('*').eq('salon_id', id),
-        supabase.from('clients').select('*').eq('salon_id', id),
-        supabase.from('reviews').select('*').eq('salon_id', id),
-        supabase.from('waitlist').select('*').eq('salon_id', id),
-        supabase.from('notifications').select('*').eq('salon_id', id).order('created_at', { ascending: false }).limit(100),
-        supabase.from('notification_templates').select('*').eq('salon_id', id),
-        supabase.from('ooh_requests').select('*').eq('salon_id', id),
-        supabase.from('staff_holidays').select('*').eq('salon_id', id),
-        supabase.from('message_log').select('*').eq('salon_id', id),
-        supabase.from('campaigns').select('*').eq('salon_id', id),
-      ])
-      return keysToCamel({
-        ...data,
-        staff: (staff.data || []).map(keysToCamel),
-        services: (services.data || []).map(keysToCamel),
-        bookings: (bookings.data || []).map(keysToCamel),
-        clients: (clients.data || []).map(keysToCamel),
-        reviews: (reviews.data || []).map(keysToCamel),
-        waitlist: (waitlist.data || []).map(keysToCamel),
-        notifications: (notifications.data || []).map(keysToCamel),
-        notificationTemplates: (templates.data || []).map(keysToCamel),
-        oohRequests: (ooh.data || []).map(keysToCamel),
-        staffHolidays: (holidays.data || []).map(keysToCamel),
-        messageLog: (msgLog.data || []).map(keysToCamel),
-        campaigns: (campaigns.data || []).map(keysToCamel),
-      })
+      try {
+        const { data, error } = await supabase.from('salons').select('*').eq('id', id).single()
+        if (error || !data) return localStore.get('salon:' + id)
+        const [staff, services, bookings, clients, reviews, waitlist, notifications, templates, ooh, holidays, msgLog, campaigns] = await Promise.all([
+          supabase.from('staff').select('*').eq('salon_id', id),
+          supabase.from('services').select('*').eq('salon_id', id),
+          supabase.from('bookings').select('*').eq('salon_id', id),
+          supabase.from('clients').select('*').eq('salon_id', id),
+          supabase.from('reviews').select('*').eq('salon_id', id),
+          supabase.from('waitlist').select('*').eq('salon_id', id),
+          supabase.from('notifications').select('*').eq('salon_id', id).order('created_at', { ascending: false }).limit(100),
+          supabase.from('notification_templates').select('*').eq('salon_id', id),
+          supabase.from('ooh_requests').select('*').eq('salon_id', id),
+          supabase.from('staff_holidays').select('*').eq('salon_id', id),
+          supabase.from('message_log').select('*').eq('salon_id', id),
+          supabase.from('campaigns').select('*').eq('salon_id', id),
+        ])
+        const salon = keysToCamel({
+          ...data,
+          staff: (staff.data || []).map(keysToCamel),
+          services: (services.data || []).map(keysToCamel),
+          bookings: (bookings.data || []).map(keysToCamel),
+          clients: (clients.data || []).map(keysToCamel),
+          reviews: (reviews.data || []).map(keysToCamel),
+          waitlist: (waitlist.data || []).map(keysToCamel),
+          notifications: (notifications.data || []).map(keysToCamel),
+          notificationTemplates: (templates.data || []).map(keysToCamel),
+          oohRequests: (ooh.data || []).map(keysToCamel),
+          staffHolidays: (holidays.data || []).map(keysToCamel),
+          messageLog: (msgLog.data || []).map(keysToCamel),
+          campaigns: (campaigns.data || []).map(keysToCamel),
+        })
+        // Cache to localStorage
+        await localStore.set('salon:' + id, salon)
+        return salon
+      } catch (e) {
+        console.warn('Supabase getSalon failed, falling back to localStorage:', e.message)
+      }
     }
     return localStore.get('salon:' + id)
   },
@@ -194,11 +200,13 @@ export const S = {
     if (supabase) {
       try {
         const { staff = [], services = [], bookings = [], clients = [], reviews = [], waitlist = [], notifications = [], notificationTemplates = [], oohRequests = [], staffHolidays = [], messageLog = [], campaigns = [], ...salonData } = salon
-        await supabase.from('salons').upsert(keysToSnake(salonData))
+        const { error: salonErr } = await supabase.from('salons').upsert(keysToSnake(salonData))
+        if (salonErr) console.warn('Supabase salons upsert error:', salonErr.message)
         const syncTable = async (table, rows) => {
           if (!rows.length) return
           const snakeRows = rows.map(r => ({ ...keysToSnake(r), salon_id: salon.id }))
-          await supabase.from(table).upsert(snakeRows, { onConflict: table === 'staff' || table === 'services' || table === 'clients' ? 'id,salon_id' : 'id' })
+          const { error } = await supabase.from(table).upsert(snakeRows, { onConflict: table === 'staff' || table === 'services' || table === 'clients' ? 'id,salon_id' : 'id' })
+          if (error) console.warn(`Supabase ${table} upsert error:`, error.message)
         }
         await Promise.all([
           syncTable('staff', staff),
