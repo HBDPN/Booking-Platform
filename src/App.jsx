@@ -325,6 +325,24 @@ const CustomerApp = ({ salon, setSalon }) => {
           <button onClick={() => setStep("bookings")} style={{ marginTop: 12, width: "100%", padding: "14px 20px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#fff", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><Ic n="calendar" sz={18} />My Bookings{myUp.length > 0 && <span style={{ background: a, color: "#fff", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>{myUp.length}</span>}</button>
           <button onClick={() => setStep("reviews")} style={{ marginTop: 8, width: "100%", padding: "14px 20px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#fff", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><Ic n="star" sz={18} />Reviews</button>
           {salon.outOfHours?.enabled && <button onClick={() => setStep("ooh-request")} style={{ marginTop: 8, width: "100%", padding: "14px 20px", borderRadius: 14, border: "1px solid rgba(240,173,78,0.25)", background: "rgba(240,173,78,0.06)", color: "#f0ad4e", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><Ic n="clock" sz={18} />Request Out-of-Hours</button>}
+          <button onClick={() => {
+            const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+            const isAndroid = /android/i.test(navigator.userAgent);
+            if (window.matchMedia('(display-mode: standalone)').matches) {
+              alert("Already added to your home screen!");
+            } else if (isIOS) {
+              alert("To add to your home screen:\n\n1. Tap the Share button (square with arrow)\n2. Scroll down and tap 'Add to Home Screen'\n3. Tap 'Add'");
+            } else if (isAndroid) {
+              if (window._deferredPrompt) {
+                window._deferredPrompt.prompt();
+                window._deferredPrompt.userChoice.then(() => { window._deferredPrompt = null; });
+              } else {
+                alert("To add to your home screen:\n\n1. Tap the menu (three dots)\n2. Tap 'Add to Home Screen'\n3. Tap 'Add'");
+              }
+            } else {
+              alert("To add to your home screen:\n\nOpen this page in your mobile browser, then use the browser menu to 'Add to Home Screen'.");
+            }
+          }} style={{ marginTop: 8, width: "100%", padding: "14px 20px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#fff", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><Ic n="home" sz={18} />Add to Home Screen</button>
           {myOoh.filter((r) => r.status === "quoted").map((r) => { const svc = salon.services.find((s) => s.id === r.serviceId); return <div key={r.id} style={{ marginTop: 10, background: "rgba(99,102,241,0.1)", borderRadius: 14, padding: "14px 16px", border: "1px solid rgba(99,102,241,0.25)" }}><div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 2, opacity: .5, fontWeight: 700, marginBottom: 6, color: "#6366f1" }}>Quote Received</div><div style={{ fontWeight: 700, fontSize: 14 }}>{svc?.name} - {r.requestedDate}</div><div style={{ fontSize: 13, opacity: .6, marginTop: 4 }}>Price: <span style={{ fontWeight: 700, color: "#fff" }}>{r.quotedPrice}</span> at {r.quotedTime}</div><div style={{ display: "flex", gap: 8, marginTop: 12 }}><button onClick={() => respondOoh(r.id, true)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "none", background: "#2ec4b6", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Accept & Book</button><button onClick={() => respondOoh(r.id, false)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid rgba(231,76,60,0.3)", background: "transparent", color: "#e74c3c", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Decline</button></div></div>; })}
           {myWl.filter((w) => w.status === "notified").map((w) => { const svc = salon.services.find((s) => s.id === w.service_id); return <div key={w.id} style={{ marginTop: 10, background: "rgba(46,196,182,0.1)", borderRadius: 14, padding: "14px 16px", border: "1px solid rgba(46,196,182,0.25)" }}><div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 2, fontWeight: 700, marginBottom: 6, color: "#2ec4b6" }}>Slot Available!</div><div style={{ fontWeight: 700, fontSize: 14 }}>{svc?.name} - {w.preferred_date}</div><div style={{ fontSize: 12, opacity: .5, marginTop: 4 }}>A slot opened up! Book now before it expires.</div><Btn full color="#2ec4b6" onClick={() => { setSelSvc(salon.services.find((s) => s.id === w.service_id)); setStep("staff"); }} style={{ marginTop: 10, borderRadius: 10, padding: "10px", fontSize: 13 }}>Book Now</Btn></div>; })}
           <div style={{ height: 40 }} />
@@ -784,6 +802,24 @@ const OwnerDash = ({ salon, setSalon, onLogout }) => {
 
             {/* ── Brand ── */}
             {moreTab === "brand" && <div>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#777", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Logo</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  <div style={{ width: 80, height: 80, borderRadius: 20, background: salon.accent + "15", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "2px solid #eee" }}>
+                    {salon.logo?.startsWith("data:") ? <img src={salon.logo} style={{ width: 80, height: 80, objectFit: "cover" }} /> : <span style={{ fontSize: 40 }}>{salon.logo}</span>}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label style={{ padding: "8px 16px", borderRadius: 10, background: salon.accent, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", textAlign: "center" }}>
+                      Upload Logo
+                      <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = (ev) => { const img = new Image(); img.onload = () => { const c = document.createElement("canvas"), mx = 256, s = Math.min(mx / img.width, mx / img.height, 1); c.width = img.width * s; c.height = img.height * s; c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); sv({ ...salon, logo: c.toDataURL("image/jpeg", 0.8) }); }; img.src = ev.target.result; }; r.readAsDataURL(f); } }} />
+                    </label>
+                    {salon.logo?.startsWith("data:") && <button onClick={async () => await sv({ ...salon, logo: "\u2702\uFE0F" })} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #eee", background: "#fff", fontSize: 11, color: "#e74c3c", cursor: "pointer", fontFamily: "inherit" }}>Remove</button>}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {["\u2702\uFE0F", "\uD83D\uDC85", "\uD83D\uDC87", "\uD83D\uDC87\u200D\u2640\uFE0F", "\u2728", "\uD83C\uDF3F", "\uD83D\uDC8E", "\uD83C\uDF38"].map((e) => <button key={e} onClick={async () => await sv({ ...salon, logo: e })} style={{ width: 36, height: 36, borderRadius: 10, border: salon.logo === e ? "2px solid " + salon.accent : "2px solid #eee", background: salon.logo === e ? salon.accent + "15" : "#fafafa", cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>{e}</button>)}
+                    </div>
+                  </div>
+                </div>
+              </div>
               <Inp label="Salon Name" value={salon.name} onChange={async (e) => await sv({ ...salon, name: e.target.value })} />
               <Inp label="Tagline" value={salon.tagline} onChange={async (e) => await sv({ ...salon, tagline: e.target.value })} />
               <Inp label="Email" value={salon.email} onChange={async (e) => await sv({ ...salon, email: e.target.value })} />
@@ -908,7 +944,7 @@ const OwnerDash = ({ salon, setSalon, onLogout }) => {
 // ── MAIN APP ──
 // ══════════════════════════════════════════════════
 export default function App() {
-  const [route, setRoute] = useState("platform"); const [salons, setSalons] = useState({}); const [loading, setLoading] = useState(true); const [createMode, setCreateMode] = useState(false); const [nSalon, setNSalon] = useState({ name: "", tagline: "", email: "", password: "" });
+  const [route, setRoute] = useState("platform"); const [salons, setSalons] = useState({}); const [loading, setLoading] = useState(true); const [createMode, setCreateMode] = useState(false); const [nSalon, setNSalon] = useState({ name: "", tagline: "", email: "", password: "" }); const [searchQ, setSearchQ] = useState("");
   const [loginModal, setLoginModal] = useState(null); const [lEmail, setLEmail] = useState(""); const [lPw, setLPw] = useState(""); const [lName, setLName] = useState(""); const [lErr, setLErr] = useState(""); const [navMenu, setNavMenu] = useState(null);
   const resetL = () => { setLEmail(""); setLPw(""); setLName(""); setLErr(""); };
 
@@ -978,6 +1014,13 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Capture PWA install prompt for Android
+    const handler = (e) => { e.preventDefault(); window._deferredPrompt = e; };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  useEffect(() => {
     (async () => {
       const loaded = await S.listSalons();
       if (!Object.keys(loaded).length) {
@@ -1028,8 +1071,13 @@ export default function App() {
           <p style={{ opacity: .4, margin: "12px auto 0", fontSize: 15, maxWidth: 340, lineHeight: 1.6 }}>Beautiful booking pages for salons, barbers & beauty studios.</p>
         </div>
         <div style={{ marginTop: 48 }}>
+          <div style={{ position: "relative", marginBottom: 20 }}>
+            <div style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", opacity: .3 }}><Ic n="eye" sz={16} /></div>
+            <input value={searchQ} onChange={(e) => setSearchQ(e.target.value)} placeholder="Search salons, barbers, studios..." style={{ width: "100%", padding: "14px 14px 14px 40px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+            {searchQ && <button onClick={() => setSearchQ("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", padding: 4 }}><Ic n="x" sz={14} /></button>}
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}><h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Businesses</h2><button onClick={() => setCreateMode(true)} style={{ background: "rgba(255,255,255,0.08)", border: "none", color: "#fff", borderRadius: 10, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>+ New</button></div>
-          {Object.values(salons).map((s, i) => {
+          {Object.values(salons).filter((s) => !searchQ || s.name.toLowerCase().includes(searchQ.toLowerCase()) || s.tagline?.toLowerCase().includes(searchQ.toLowerCase()) || s.address?.toLowerCase().includes(searchQ.toLowerCase()) || (s.services || []).some((sv) => sv.name.toLowerCase().includes(searchQ.toLowerCase()) || sv.category?.toLowerCase().includes(searchQ.toLowerCase()))).map((s, i) => {
             const avgR = (s.reviews || []).filter((r) => !r.hidden); const avg = avgR.length ? (avgR.reduce((t, r) => t + r.rating, 0) / avgR.length).toFixed(1) : null;
             return <div key={s.id} className="salon-card fade-up" style={{ background: s.color, borderRadius: 20, padding: 24, marginBottom: 16, animationDelay: i * .08 + "s", animationFillMode: "both" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>{s.logo?.startsWith("data:") ? <img src={s.logo} style={{ width: 48, height: 48, borderRadius: 12, objectFit: "cover" }} /> : <div style={{ fontSize: 36 }}>{s.logo}</div>}<div><h3 style={{ margin: "0 0 4px", fontSize: 20, fontFamily: "'Playfair Display',serif" }}>{s.name}</h3><p style={{ opacity: .5, margin: 0, fontSize: 13 }}>{s.tagline}</p>{avg && <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}><Stars rating={Math.round(Number(avg))} sz={12} /><span style={{ fontSize: 12, opacity: .6 }}>{avg}</span></div>}</div></div>
@@ -1041,6 +1089,7 @@ export default function App() {
             </div>;
           })}
         </div>
+        {searchQ && !Object.values(salons).some((s) => s.name.toLowerCase().includes(searchQ.toLowerCase()) || s.tagline?.toLowerCase().includes(searchQ.toLowerCase()) || s.address?.toLowerCase().includes(searchQ.toLowerCase()) || (s.services || []).some((sv) => sv.name.toLowerCase().includes(searchQ.toLowerCase()) || sv.category?.toLowerCase().includes(searchQ.toLowerCase()))) && <div style={{ textAlign: "center", padding: "30px 0", opacity: .3, fontSize: 14 }}>No businesses found for "{searchQ}"</div>}
         {/* Super Admin link (hidden) */}
         <div style={{ textAlign: "center", marginTop: 40, marginBottom: 40 }}>
           <button onClick={() => setRoute("super-admin")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.08)", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>Admin</button>
