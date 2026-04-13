@@ -859,7 +859,7 @@ const OwnerDash = ({ salon, setSalon, onLogout }) => {
             {/* ── Schedule ── */}
             {moreTab === "schedule" && <div>
               <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Business Hours</h3>
-              {DAYS.map((d) => <div key={d} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #eee" }}><span style={{ fontWeight: 600, fontSize: 14, textTransform: "capitalize" }}>{d}</span><input value={salon.hours[d] || "Closed"} onChange={async (e) => await sv({ ...salon, hours: { ...salon.hours, [d]: e.target.value } })} style={{ border: "1px solid #eee", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontFamily: "inherit", width: 140, textAlign: "center" }} /></div>)}
+              {DAYS.map((d) => <div key={d} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #eee" }}><span style={{ fontWeight: 600, fontSize: 14, textTransform: "capitalize" }}>{d}</span><input value={salon.hours[d] || "Closed"} onChange={(e) => setSalon({ ...salon, hours: { ...salon.hours, [d]: e.target.value } })} onBlur={() => sv(salon)} style={{ border: "1px solid #eee", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontFamily: "inherit", width: 140, textAlign: "center" }} /></div>)}
               <h4 style={{ fontSize: 14, fontWeight: 700, marginTop: 24, marginBottom: 12 }}>Holidays</h4>
               <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><input type="date" value={nHol} onChange={(e) => setNHol(e.target.value)} style={{ flex: 1, padding: "8px 12px", border: "1px solid #eee", borderRadius: 8, fontSize: 13, fontFamily: "inherit" }} /><Btn color={ac} disabled={!nHol} onClick={async () => { await sv({ ...salon, holidays: [...(salon.holidays || []), nHol] }); setNHol(""); }} style={{ padding: "8px 16px", fontSize: 12, borderRadius: 8 }}>Add</Btn></div>
               {(salon.holidays || []).map((h) => <div key={h} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", fontSize: 13 }}><span>{h}</span><button onClick={async () => await sv({ ...salon, holidays: salon.holidays.filter((x) => x !== h) })} style={{ background: "none", border: "none", color: "#e74c3c", cursor: "pointer" }}><Ic n="x" sz={14} /></button></div>)}
@@ -900,11 +900,11 @@ const OwnerDash = ({ salon, setSalon, onLogout }) => {
                   </div>
                 </div>
               </div>
-              <Inp label="Salon Name" value={salon.name} onChange={async (e) => await sv({ ...salon, name: e.target.value })} />
-              <Inp label="Tagline" value={salon.tagline} onChange={async (e) => await sv({ ...salon, tagline: e.target.value })} />
-              <Inp label="Email" value={salon.email} onChange={async (e) => await sv({ ...salon, email: e.target.value })} />
-              <Inp label="Phone" value={salon.phone} onChange={async (e) => await sv({ ...salon, phone: e.target.value })} />
-              <Inp label="Address" value={salon.address} onChange={async (e) => await sv({ ...salon, address: e.target.value })} />
+              <Inp label="Salon Name" value={salon.name} onChange={(e) => setSalon({ ...salon, name: e.target.value })} onBlur={() => sv(salon)} />
+              <Inp label="Tagline" value={salon.tagline} onChange={(e) => setSalon({ ...salon, tagline: e.target.value })} onBlur={() => sv(salon)} />
+              <Inp label="Email" value={salon.email} onChange={(e) => setSalon({ ...salon, email: e.target.value })} onBlur={() => sv(salon)} />
+              <Inp label="Phone" value={salon.phone} onChange={(e) => setSalon({ ...salon, phone: e.target.value })} onBlur={() => sv(salon)} />
+              <Inp label="Address" value={salon.address} onChange={(e) => setSalon({ ...salon, address: e.target.value })} onBlur={() => sv(salon)} />
               <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#777", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Brand Color</label><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{["#e94560", "#0f3460", "#533483", "#6366f1", "#f4a261", "#2ec4b6", "#e76f51", "#10b981", "#8b5cf6", "#f59e0b"].map((c) => <button key={c} onClick={async () => await sv({ ...salon, accent: c })} style={{ width: 32, height: 32, borderRadius: 8, background: c, border: salon.accent === c ? "3px solid #333" : "3px solid transparent", cursor: "pointer" }} />)}</div></div>
             </div>}
 
