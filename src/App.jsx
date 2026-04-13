@@ -98,6 +98,84 @@ const googleCalUrl = (booking, salon) => {
   return `https://calendar.google.com/calendar/render?${params}`;
 };
 
+// ── Dynamic PWA Manifest ──
+const generateSalonIcon = (salon, size = 192) => {
+  const c = document.createElement("canvas");
+  c.width = size; c.height = size;
+  const ctx = c.getContext("2d");
+  // Background with salon color
+  ctx.fillStyle = salon.color || "#1a1a2e";
+  ctx.beginPath();
+  ctx.roundRect(0, 0, size, size, size * 0.2);
+  ctx.fill();
+  if (salon.logo?.startsWith("data:")) {
+    // Return promise for image-based logo
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const pad = size * 0.15;
+        const s = Math.min((size - pad * 2) / img.width, (size - pad * 2) / img.height);
+        const w = img.width * s, h = img.height * s;
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        c.toBlob((blob) => resolve(URL.createObjectURL(blob)), "image/png");
+      };
+      img.src = salon.logo;
+    });
+  }
+  // Emoji logo
+  ctx.font = `${size * 0.5}px serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(salon.logo || "\u2702\uFE0F", size / 2, size / 2 + size * 0.03);
+  return new Promise((resolve) => {
+    c.toBlob((blob) => resolve(URL.createObjectURL(blob)), "image/png");
+  });
+};
+
+const setSalonManifest = async (salon) => {
+  const icon192 = await generateSalonIcon(salon, 192);
+  const icon512 = await generateSalonIcon(salon, 512);
+  const manifest = {
+    name: salon.name,
+    short_name: salon.name,
+    description: salon.tagline || "Book with " + salon.name,
+    start_url: window.location.origin + "/#salon:" + salon.id,
+    display: "standalone",
+    background_color: salon.color || "#0a0a0a",
+    theme_color: salon.color || "#0a0a0a",
+    orientation: "portrait",
+    icons: [
+      { src: icon192, sizes: "192x192", type: "image/png" },
+      { src: icon512, sizes: "512x512", type: "image/png" },
+    ],
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  // Replace existing manifest link
+  let link = document.querySelector('link[rel="manifest"]');
+  if (link) { link.href = url; } else { link = document.createElement("link"); link.rel = "manifest"; link.href = url; document.head.appendChild(link); }
+  // Update theme color and title
+  document.title = salon.name + " - Book Now";
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = salon.color || "#0a0a0a";
+  // Update apple-touch-icon
+  let appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
+  if (!appleIcon) { appleIcon = document.createElement("link"); appleIcon.rel = "apple-touch-icon"; document.head.appendChild(appleIcon); }
+  appleIcon.href = icon192;
+  // Update apple-mobile-web-app-title for iOS home screen name
+  let appTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if (!appTitle) { appTitle = document.createElement("meta"); appTitle.name = "apple-mobile-web-app-title"; document.head.appendChild(appTitle); }
+  appTitle.content = salon.name;
+};
+
+const resetManifest = () => {
+  const link = document.querySelector('link[rel="manifest"]');
+  if (link) link.href = "/manifest.json";
+  document.title = "Book.app";
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = "#0a0a0a";
+};
+
 // ── Data Export ──
 const toCSV = (data, columns) => {
   const hdr = columns.map((c) => c.label).join(",");
@@ -325,24 +403,24 @@ const CustomerApp = ({ salon, setSalon }) => {
           <button onClick={() => setStep("bookings")} style={{ marginTop: 12, width: "100%", padding: "14px 20px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#fff", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><Ic n="calendar" sz={18} />My Bookings{myUp.length > 0 && <span style={{ background: a, color: "#fff", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>{myUp.length}</span>}</button>
           <button onClick={() => setStep("reviews")} style={{ marginTop: 8, width: "100%", padding: "14px 20px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#fff", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><Ic n="star" sz={18} />Reviews</button>
           {salon.outOfHours?.enabled && <button onClick={() => setStep("ooh-request")} style={{ marginTop: 8, width: "100%", padding: "14px 20px", borderRadius: 14, border: "1px solid rgba(240,173,78,0.25)", background: "rgba(240,173,78,0.06)", color: "#f0ad4e", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><Ic n="clock" sz={18} />Request Out-of-Hours</button>}
-          <button onClick={() => {
+          <button onClick={async () => {
+            // Ensure manifest is set for this salon before prompting
+            await setSalonManifest(salon);
             const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
             const isAndroid = /android/i.test(navigator.userAgent);
             if (window.matchMedia('(display-mode: standalone)').matches) {
-              alert("Already added to your home screen!");
+              alert("You're already using " + salon.name + " from your home screen!");
+            } else if (isAndroid && window._deferredPrompt) {
+              window._deferredPrompt.prompt();
+              window._deferredPrompt.userChoice.then(() => { window._deferredPrompt = null; });
             } else if (isIOS) {
-              alert("To add to your home screen:\n\n1. Tap the Share button (square with arrow)\n2. Scroll down and tap 'Add to Home Screen'\n3. Tap 'Add'");
+              alert("Add " + salon.name + " to your home screen:\n\n1. Tap the Share button (square with arrow)\n2. Scroll down and tap 'Add to Home Screen'\n3. It will appear as '" + salon.name + "' with the salon logo");
             } else if (isAndroid) {
-              if (window._deferredPrompt) {
-                window._deferredPrompt.prompt();
-                window._deferredPrompt.userChoice.then(() => { window._deferredPrompt = null; });
-              } else {
-                alert("To add to your home screen:\n\n1. Tap the menu (three dots)\n2. Tap 'Add to Home Screen'\n3. Tap 'Add'");
-              }
+              alert("Add " + salon.name + " to your home screen:\n\n1. Tap the menu (\u22EE)\n2. Tap 'Add to Home Screen'\n3. It will appear as '" + salon.name + "' with the salon logo");
             } else {
-              alert("To add to your home screen:\n\nOpen this page in your mobile browser, then use the browser menu to 'Add to Home Screen'.");
+              alert("Add " + salon.name + " to your home screen:\n\nOpen this page on your mobile device, then use the browser menu to 'Add to Home Screen'. It will save as '" + salon.name + "' with the salon logo.");
             }
-          }} style={{ marginTop: 8, width: "100%", padding: "14px 20px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#fff", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><Ic n="home" sz={18} />Add to Home Screen</button>
+          }} style={{ marginTop: 8, width: "100%", padding: "14px 20px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#fff", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><Ic n="home" sz={18} />Add {salon.name} to Home Screen</button>
           {myOoh.filter((r) => r.status === "quoted").map((r) => { const svc = salon.services.find((s) => s.id === r.serviceId); return <div key={r.id} style={{ marginTop: 10, background: "rgba(99,102,241,0.1)", borderRadius: 14, padding: "14px 16px", border: "1px solid rgba(99,102,241,0.25)" }}><div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 2, opacity: .5, fontWeight: 700, marginBottom: 6, color: "#6366f1" }}>Quote Received</div><div style={{ fontWeight: 700, fontSize: 14 }}>{svc?.name} - {r.requestedDate}</div><div style={{ fontSize: 13, opacity: .6, marginTop: 4 }}>Price: <span style={{ fontWeight: 700, color: "#fff" }}>{r.quotedPrice}</span> at {r.quotedTime}</div><div style={{ display: "flex", gap: 8, marginTop: 12 }}><button onClick={() => respondOoh(r.id, true)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "none", background: "#2ec4b6", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Accept & Book</button><button onClick={() => respondOoh(r.id, false)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid rgba(231,76,60,0.3)", background: "transparent", color: "#e74c3c", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Decline</button></div></div>; })}
           {myWl.filter((w) => w.status === "notified").map((w) => { const svc = salon.services.find((s) => s.id === w.service_id); return <div key={w.id} style={{ marginTop: 10, background: "rgba(46,196,182,0.1)", borderRadius: 14, padding: "14px 16px", border: "1px solid rgba(46,196,182,0.25)" }}><div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 2, fontWeight: 700, marginBottom: 6, color: "#2ec4b6" }}>Slot Available!</div><div style={{ fontWeight: 700, fontSize: 14 }}>{svc?.name} - {w.preferred_date}</div><div style={{ fontSize: 12, opacity: .5, marginTop: 4 }}>A slot opened up! Book now before it expires.</div><Btn full color="#2ec4b6" onClick={() => { setSelSvc(salon.services.find((s) => s.id === w.service_id)); setStep("staff"); }} style={{ marginTop: 10, borderRadius: 10, padding: "10px", fontSize: 13 }}>Book Now</Btn></div>; })}
           <div style={{ height: 40 }} />
@@ -944,7 +1022,7 @@ const OwnerDash = ({ salon, setSalon, onLogout }) => {
 // ── MAIN APP ──
 // ══════════════════════════════════════════════════
 export default function App() {
-  const [route, setRoute] = useState("platform"); const [salons, setSalons] = useState({}); const [loading, setLoading] = useState(true); const [createMode, setCreateMode] = useState(false); const [nSalon, setNSalon] = useState({ name: "", tagline: "", email: "", password: "" }); const [searchQ, setSearchQ] = useState("");
+  const [route, setRoute] = useState(() => { const h = window.location.hash.slice(1); return h || "platform"; }); const [salons, setSalons] = useState({}); const [loading, setLoading] = useState(true); const [createMode, setCreateMode] = useState(false); const [nSalon, setNSalon] = useState({ name: "", tagline: "", email: "", password: "" }); const [searchQ, setSearchQ] = useState("");
   const [loginModal, setLoginModal] = useState(null); const [lEmail, setLEmail] = useState(""); const [lPw, setLPw] = useState(""); const [lName, setLName] = useState(""); const [lErr, setLErr] = useState(""); const [navMenu, setNavMenu] = useState(null);
   const resetL = () => { setLEmail(""); setLPw(""); setLName(""); setLErr(""); };
 
@@ -1013,8 +1091,29 @@ export default function App() {
     setSalons((p) => ({ ...p, [slug]: s })); setCreateMode(false); setNSalon({ name: "", tagline: "", email: "", password: "" }); setRoute("admin:" + slug);
   };
 
+  // Sync route to URL hash
   useEffect(() => {
-    // Capture PWA install prompt for Android
+    if (route === "platform") { window.location.hash = ""; } else { window.location.hash = route; }
+  }, [route]);
+
+  // Listen for hash changes (back/forward browser navigation)
+  useEffect(() => {
+    const onHash = () => { const h = window.location.hash.slice(1); setRoute(h || "platform"); };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // Update manifest when viewing a salon
+  useEffect(() => {
+    if (route.startsWith("salon:") && salons[route.split(":")[1]]) {
+      setSalonManifest(salons[route.split(":")[1]]);
+    } else if (!route.startsWith("salon:")) {
+      resetManifest();
+    }
+  }, [route, salons]);
+
+  // Capture PWA install prompt for Android
+  useEffect(() => {
     const handler = (e) => { e.preventDefault(); window._deferredPrompt = e; };
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
