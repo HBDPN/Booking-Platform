@@ -139,7 +139,7 @@ const setSalonManifest = async (salon) => {
     name: salon.name,
     short_name: salon.name,
     description: salon.tagline || "Book with " + salon.name,
-    start_url: window.location.origin + "/#salon:" + salon.id,
+    start_url: window.location.origin + "/?salon=" + salon.id,
     display: "standalone",
     background_color: salon.color || "#0a0a0a",
     theme_color: salon.color || "#0a0a0a",
@@ -406,6 +406,8 @@ const CustomerApp = ({ salon, setSalon }) => {
           <button onClick={async () => {
             // Ensure manifest is set for this salon before prompting
             await setSalonManifest(salon);
+            // Set URL to query-param format so iOS/Android preserve the salon on home screen launch
+            window.history.replaceState(null, "", window.location.pathname + "?salon=" + salon.id);
             const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
             const isAndroid = /android/i.test(navigator.userAgent);
             if (window.matchMedia('(display-mode: standalone)').matches) {
@@ -1022,7 +1024,7 @@ const OwnerDash = ({ salon, setSalon, onLogout }) => {
 // ── MAIN APP ──
 // ══════════════════════════════════════════════════
 export default function App() {
-  const [route, setRoute] = useState(() => { const h = window.location.hash.slice(1); return h || "platform"; }); const [salons, setSalons] = useState({}); const [loading, setLoading] = useState(true); const [createMode, setCreateMode] = useState(false); const [nSalon, setNSalon] = useState({ name: "", tagline: "", email: "", password: "" }); const [searchQ, setSearchQ] = useState("");
+  const [route, setRoute] = useState(() => { const params = new URLSearchParams(window.location.search); const salonParam = params.get("salon"); if (salonParam) return "salon:" + salonParam; const h = window.location.hash.slice(1); return h || "platform"; }); const [salons, setSalons] = useState({}); const [loading, setLoading] = useState(true); const [createMode, setCreateMode] = useState(false); const [nSalon, setNSalon] = useState({ name: "", tagline: "", email: "", password: "" }); const [searchQ, setSearchQ] = useState("");
   const [loginModal, setLoginModal] = useState(null); const [lEmail, setLEmail] = useState(""); const [lPw, setLPw] = useState(""); const [lName, setLName] = useState(""); const [lErr, setLErr] = useState(""); const [navMenu, setNavMenu] = useState(null);
   const resetL = () => { setLEmail(""); setLPw(""); setLName(""); setLErr(""); };
 
@@ -1091,8 +1093,9 @@ export default function App() {
     setSalons((p) => ({ ...p, [slug]: s })); setCreateMode(false); setNSalon({ name: "", tagline: "", email: "", password: "" }); setRoute("admin:" + slug);
   };
 
-  // Sync route to URL hash
+  // Sync route to URL hash and clean up query params from PWA launch
   useEffect(() => {
+    if (window.location.search) { window.history.replaceState(null, "", window.location.pathname + (route === "platform" ? "" : "#" + route)); }
     if (route === "platform") { window.location.hash = ""; } else { window.location.hash = route; }
   }, [route]);
 
