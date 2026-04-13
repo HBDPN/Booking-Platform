@@ -7,6 +7,24 @@ export const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null
 
+// camelCase ↔ snake_case conversion
+const toSnake = (s) => s.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase())
+const toCamel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+const keysToSnake = (obj) => {
+  if (Array.isArray(obj)) return obj.map(keysToSnake)
+  if (obj && typeof obj === 'object' && !(obj instanceof Date)) {
+    return Object.fromEntries(Object.entries(obj).map(([k, v]) => [toSnake(k), v]))
+  }
+  return obj
+}
+const keysToCamel = (obj) => {
+  if (Array.isArray(obj)) return obj.map(keysToCamel)
+  if (obj && typeof obj === 'object' && !(obj instanceof Date)) {
+    return Object.fromEntries(Object.entries(obj).map(([k, v]) => [toCamel(k), v]))
+  }
+  return obj
+}
+
 // Fallback to localStorage when Supabase is not configured
 const localStore = {
   async get(k) {
@@ -50,21 +68,21 @@ export const S = {
         supabase.from('message_log').select('*').eq('salon_id', id),
         supabase.from('campaigns').select('*').eq('salon_id', id),
       ])
-      return {
+      return keysToCamel({
         ...data,
-        staff: staff.data || [],
-        services: services.data || [],
-        bookings: bookings.data || [],
-        clients: clients.data || [],
-        reviews: reviews.data || [],
-        waitlist: waitlist.data || [],
-        notifications: notifications.data || [],
-        notificationTemplates: templates.data || [],
-        oohRequests: ooh.data || [],
-        staffHolidays: holidays.data || [],
-        messageLog: msgLog.data || [],
-        campaigns: campaigns.data || [],
-      }
+        staff: (staff.data || []).map(keysToCamel),
+        services: (services.data || []).map(keysToCamel),
+        bookings: (bookings.data || []).map(keysToCamel),
+        clients: (clients.data || []).map(keysToCamel),
+        reviews: (reviews.data || []).map(keysToCamel),
+        waitlist: (waitlist.data || []).map(keysToCamel),
+        notifications: (notifications.data || []).map(keysToCamel),
+        notificationTemplates: (templates.data || []).map(keysToCamel),
+        oohRequests: (ooh.data || []).map(keysToCamel),
+        staffHolidays: (holidays.data || []).map(keysToCamel),
+        messageLog: (msgLog.data || []).map(keysToCamel),
+        campaigns: (campaigns.data || []).map(keysToCamel),
+      })
     }
     return localStore.get('salon:' + id)
   },
@@ -91,7 +109,7 @@ export const S = {
   async saveSalon(salon) {
     if (supabase) {
       const { staff, services, bookings, clients, reviews, waitlist, notifications, notificationTemplates, oohRequests, staffHolidays, messageLog, campaigns, ...salonData } = salon
-      await supabase.from('salons').upsert(salonData)
+      await supabase.from('salons').upsert(keysToSnake(salonData))
       return
     }
     return localStore.set('salon:' + salon.id, salon)
@@ -160,8 +178,34 @@ export const S = {
     return localStore.del(key)
   },
 
-  // ── Full save (localStorage mode) - saves entire salon object ──
+  // ── Full save - saves entire salon object to Supabase or localStorage ──
   async saveFullSalon(salon) {
+    if (supabase) {
+      const { staff = [], services = [], bookings = [], clients = [], reviews = [], waitlist = [], notifications = [], notificationTemplates = [], oohRequests = [], staffHolidays = [], messageLog = [], campaigns = [], ...salonData } = salon
+      // Save salon record (convert camelCase keys to snake_case for DB)
+      await supabase.from('salons').upsert(keysToSnake(salonData))
+      // Sync related tables
+      const syncTable = async (table, rows) => {
+        if (!rows.length) return
+        const snakeRows = rows.map(r => ({ ...keysToSnake(r), salon_id: salon.id }))
+        await supabase.from(table).upsert(snakeRows, { onConflict: table === 'staff' || table === 'services' || table === 'clients' ? 'id,salon_id' : 'id' })
+      }
+      await Promise.all([
+        syncTable('staff', staff),
+        syncTable('services', services),
+        syncTable('bookings', bookings),
+        syncTable('clients', clients),
+        syncTable('reviews', reviews),
+        syncTable('waitlist', waitlist),
+        syncTable('notifications', notifications),
+        syncTable('notification_templates', notificationTemplates),
+        syncTable('ooh_requests', oohRequests),
+        syncTable('staff_holidays', staffHolidays),
+        syncTable('message_log', messageLog),
+        syncTable('campaigns', campaigns),
+      ])
+      return
+    }
     return localStore.set('salon:' + salon.id, salon)
   },
 
