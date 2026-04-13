@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { S, Auth, supabase } from "./supabase.js";
 
 // ── Utilities ──
@@ -667,6 +667,9 @@ const SuperAdminDash = ({ salons, onLogout }) => {
 // ── OWNER DASHBOARD ──
 // ══════════════════════════════════════════════════
 const OwnerDash = ({ salon, setSalon, onLogout }) => {
+  const salonRef = useRef(salon); salonRef.current = salon;
+  const updateLocal = (u) => { salonRef.current = u; setSalon(u); };
+  const saveBrand = () => S.saveFullSalon(salonRef.current);
   const [tab, setTab] = useState("overview"); const [showAddStaff, setShowAddStaff] = useState(false); const [showAddSvc, setShowAddSvc] = useState(false); const [showAddHol, setShowAddHol] = useState(false); const [showAddBk, setShowAddBk] = useState(false);
   const [nStaff, setNStaff] = useState({ name: "", role: "", avatar: "\uD83E\uDDD1", color: "#6366f1" }); const [editStaff, setEditStaff] = useState(null); const [nSvc, setNSvc] = useState({ name: "", duration: 30, price: 0, category: "" }); const [editSvc, setEditSvc] = useState(null); const [showImportSvc, setShowImportSvc] = useState(false); const [importSvcPv, setImportSvcPv] = useState(null); const [importSvcDone, setImportSvcDone] = useState(0); const [nHol, setNHol] = useState(""); const [nBk, setNBk] = useState({ cn: "", ce: "", svcId: "", stId: "", date: "", time: "" });
   const [bMsg, setBMsg] = useState(""); const [bType, setBType] = useState("push"); const [drill, setDrill] = useState(null); const [dRange, setDRange] = useState("7"); const [dFrom, setDFrom] = useState(""); const [dTo, setDTo] = useState(""); const [cSearch, setCSearch] = useState(""); const [cFilter, setCFilter] = useState("all"); const [msgTab, setMsgTab] = useState("send"); const [bkCS, setBkCS] = useState("");
@@ -859,7 +862,7 @@ const OwnerDash = ({ salon, setSalon, onLogout }) => {
             {/* ── Schedule ── */}
             {moreTab === "schedule" && <div>
               <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Business Hours</h3>
-              {DAYS.map((d) => <div key={d} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #eee" }}><span style={{ fontWeight: 600, fontSize: 14, textTransform: "capitalize" }}>{d}</span><input value={salon.hours[d] || "Closed"} onChange={(e) => setSalon({ ...salon, hours: { ...salon.hours, [d]: e.target.value } })} onBlur={() => sv(salon)} style={{ border: "1px solid #eee", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontFamily: "inherit", width: 140, textAlign: "center" }} /></div>)}
+              {DAYS.map((d) => <div key={d} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #eee" }}><span style={{ fontWeight: 600, fontSize: 14, textTransform: "capitalize" }}>{d}</span><input value={salon.hours[d] || "Closed"} onChange={(e) => updateLocal({ ...salon, hours: { ...salon.hours, [d]: e.target.value } })} onBlur={saveBrand} style={{ border: "1px solid #eee", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontFamily: "inherit", width: 140, textAlign: "center" }} /></div>)}
               <h4 style={{ fontSize: 14, fontWeight: 700, marginTop: 24, marginBottom: 12 }}>Holidays</h4>
               <div style={{ display: "flex", gap: 8, marginBottom: 12 }}><input type="date" value={nHol} onChange={(e) => setNHol(e.target.value)} style={{ flex: 1, padding: "8px 12px", border: "1px solid #eee", borderRadius: 8, fontSize: 13, fontFamily: "inherit" }} /><Btn color={ac} disabled={!nHol} onClick={async () => { await sv({ ...salon, holidays: [...(salon.holidays || []), nHol] }); setNHol(""); }} style={{ padding: "8px 16px", fontSize: 12, borderRadius: 8 }}>Add</Btn></div>
               {(salon.holidays || []).map((h) => <div key={h} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", fontSize: 13 }}><span>{h}</span><button onClick={async () => await sv({ ...salon, holidays: salon.holidays.filter((x) => x !== h) })} style={{ background: "none", border: "none", color: "#e74c3c", cursor: "pointer" }}><Ic n="x" sz={14} /></button></div>)}
@@ -900,11 +903,11 @@ const OwnerDash = ({ salon, setSalon, onLogout }) => {
                   </div>
                 </div>
               </div>
-              <Inp label="Salon Name" value={salon.name} onChange={(e) => setSalon({ ...salon, name: e.target.value })} onBlur={() => sv(salon)} />
-              <Inp label="Tagline" value={salon.tagline} onChange={(e) => setSalon({ ...salon, tagline: e.target.value })} onBlur={() => sv(salon)} />
-              <Inp label="Email" value={salon.email} onChange={(e) => setSalon({ ...salon, email: e.target.value })} onBlur={() => sv(salon)} />
-              <Inp label="Phone" value={salon.phone} onChange={(e) => setSalon({ ...salon, phone: e.target.value })} onBlur={() => sv(salon)} />
-              <Inp label="Address" value={salon.address} onChange={(e) => setSalon({ ...salon, address: e.target.value })} onBlur={() => sv(salon)} />
+              <Inp label="Salon Name" value={salon.name} onChange={(e) => updateLocal({ ...salon, name: e.target.value })} onBlur={saveBrand} />
+              <Inp label="Tagline" value={salon.tagline} onChange={(e) => updateLocal({ ...salon, tagline: e.target.value })} onBlur={saveBrand} />
+              <Inp label="Email" value={salon.email} onChange={(e) => updateLocal({ ...salon, email: e.target.value })} onBlur={saveBrand} />
+              <Inp label="Phone" value={salon.phone} onChange={(e) => updateLocal({ ...salon, phone: e.target.value })} onBlur={saveBrand} />
+              <Inp label="Address" value={salon.address} onChange={(e) => updateLocal({ ...salon, address: e.target.value })} onBlur={saveBrand} />
               <div style={{ marginBottom: 16 }}><label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#777", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Brand Color</label><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{["#e94560", "#0f3460", "#533483", "#6366f1", "#f4a261", "#2ec4b6", "#e76f51", "#10b981", "#8b5cf6", "#f59e0b"].map((c) => <button key={c} onClick={async () => await sv({ ...salon, accent: c })} style={{ width: 32, height: 32, borderRadius: 8, background: c, border: salon.accent === c ? "3px solid #333" : "3px solid transparent", cursor: "pointer" }} />)}</div></div>
             </div>}
 

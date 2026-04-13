@@ -89,14 +89,20 @@ export const S = {
 
   async listSalons() {
     if (supabase) {
-      const { data } = await supabase.from('salons').select('*')
-      if (!data) return {}
-      const result = {}
-      for (const s of data) {
-        result[s.id] = await S.getSalon(s.id)
+      try {
+        const { data } = await supabase.from('salons').select('*')
+        if (data && data.length > 0) {
+          const result = {}
+          for (const s of data) {
+            result[s.id] = await S.getSalon(s.id)
+          }
+          return result
+        }
+      } catch (e) {
+        console.warn('Supabase read failed, falling back to localStorage:', e.message)
       }
-      return result
     }
+    // Fallback to localStorage
     const keys = await localStore.list('salon:')
     const result = {}
     for (const k of keys) {
@@ -107,12 +113,15 @@ export const S = {
   },
 
   async saveSalon(salon) {
+    await localStore.set('salon:' + salon.id, salon)
     if (supabase) {
-      const { staff, services, bookings, clients, reviews, waitlist, notifications, notificationTemplates, oohRequests, staffHolidays, messageLog, campaigns, ...salonData } = salon
-      await supabase.from('salons').upsert(keysToSnake(salonData))
-      return
+      try {
+        const { staff, services, bookings, clients, reviews, waitlist, notifications, notificationTemplates, oohRequests, staffHolidays, messageLog, campaigns, ...salonData } = salon
+        await supabase.from('salons').upsert(keysToSnake(salonData))
+      } catch (e) {
+        console.warn('Supabase save failed:', e.message)
+      }
     }
-    return localStore.set('salon:' + salon.id, salon)
   },
 
   // ── Table-level operations for Supabase ──
@@ -178,35 +187,37 @@ export const S = {
     return localStore.del(key)
   },
 
-  // ── Full save - saves entire salon object to Supabase or localStorage ──
+  // ── Full save - saves to localStorage always, and to Supabase when available ──
   async saveFullSalon(salon) {
+    // Always save to localStorage as reliable cache
+    await localStore.set('salon:' + salon.id, salon)
     if (supabase) {
-      const { staff = [], services = [], bookings = [], clients = [], reviews = [], waitlist = [], notifications = [], notificationTemplates = [], oohRequests = [], staffHolidays = [], messageLog = [], campaigns = [], ...salonData } = salon
-      // Save salon record (convert camelCase keys to snake_case for DB)
-      await supabase.from('salons').upsert(keysToSnake(salonData))
-      // Sync related tables
-      const syncTable = async (table, rows) => {
-        if (!rows.length) return
-        const snakeRows = rows.map(r => ({ ...keysToSnake(r), salon_id: salon.id }))
-        await supabase.from(table).upsert(snakeRows, { onConflict: table === 'staff' || table === 'services' || table === 'clients' ? 'id,salon_id' : 'id' })
+      try {
+        const { staff = [], services = [], bookings = [], clients = [], reviews = [], waitlist = [], notifications = [], notificationTemplates = [], oohRequests = [], staffHolidays = [], messageLog = [], campaigns = [], ...salonData } = salon
+        await supabase.from('salons').upsert(keysToSnake(salonData))
+        const syncTable = async (table, rows) => {
+          if (!rows.length) return
+          const snakeRows = rows.map(r => ({ ...keysToSnake(r), salon_id: salon.id }))
+          await supabase.from(table).upsert(snakeRows, { onConflict: table === 'staff' || table === 'services' || table === 'clients' ? 'id,salon_id' : 'id' })
+        }
+        await Promise.all([
+          syncTable('staff', staff),
+          syncTable('services', services),
+          syncTable('bookings', bookings),
+          syncTable('clients', clients),
+          syncTable('reviews', reviews),
+          syncTable('waitlist', waitlist),
+          syncTable('notifications', notifications),
+          syncTable('notification_templates', notificationTemplates),
+          syncTable('ooh_requests', oohRequests),
+          syncTable('staff_holidays', staffHolidays),
+          syncTable('message_log', messageLog),
+          syncTable('campaigns', campaigns),
+        ])
+      } catch (e) {
+        console.warn('Supabase save failed, data saved to localStorage:', e.message)
       }
-      await Promise.all([
-        syncTable('staff', staff),
-        syncTable('services', services),
-        syncTable('bookings', bookings),
-        syncTable('clients', clients),
-        syncTable('reviews', reviews),
-        syncTable('waitlist', waitlist),
-        syncTable('notifications', notifications),
-        syncTable('notification_templates', notificationTemplates),
-        syncTable('ooh_requests', oohRequests),
-        syncTable('staff_holidays', staffHolidays),
-        syncTable('message_log', messageLog),
-        syncTable('campaigns', campaigns),
-      ])
-      return
     }
-    return localStore.set('salon:' + salon.id, salon)
   },
 
   // ── Super Admin queries ──
