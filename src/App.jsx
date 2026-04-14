@@ -753,7 +753,13 @@ const OwnerDash = ({ salon, setSalon, onLogout }) => {
 
   const createStaffLogin = async () => {
     if (!staffLoginModal || !staffLoginEmail || !staffLoginPw || staffLoginPw.length < 6) return;
-    await S.setAccount("st:" + salon.id + ":" + staffLoginModal, { email: staffLoginEmail.toLowerCase(), password: staffLoginPw, staffId: staffLoginModal, salonId: salon.id });
+    if (supabase) {
+      try {
+        await Auth.signUp(staffLoginEmail, staffLoginPw, { role: "staff", salon_id: salon.id, staff_id: staffLoginModal });
+      } catch (e) { console.warn("Staff signup error:", e.message); }
+    } else {
+      await S.setAccount("st:" + salon.id + ":" + staffLoginModal, { email: staffLoginEmail.toLowerCase(), password: staffLoginPw, staffId: staffLoginModal, salonId: salon.id });
+    }
     const u = { ...salon, staff: salon.staff.map((s) => s.id === staffLoginModal ? { ...s, email: staffLoginEmail.toLowerCase() } : s) };
     await sv(u); setStaffLoginModal(null); setStaffLoginEmail(""); setStaffLoginPw("");
   };
@@ -1034,55 +1040,121 @@ export default function App() {
   const bizLogin = async () => {
     setLErr(""); if (!lEmail || !lPw) return setLErr("Enter email and password.");
     if (!rateLimiter("biz:" + lEmail)) return setLErr("Too many attempts.");
-    const sids = Object.keys(salons);
-    for (let i = 0; i < sids.length; i++) {
-      const oa = await S.getAccount("oa:" + sids[i]);
-      if (oa && oa.email === lEmail.toLowerCase() && oa.password === lPw) { setLoginModal(null); resetL(); setRoute("admin:" + sids[i]); return; }
+    if (supabase) {
+      try {
+        const { user } = await Auth.signIn(lEmail, lPw);
+        const role = user?.user_metadata?.role;
+        if (role !== "owner" && role !== "super_admin") { await Auth.signOut(); return setLErr("Not a business account."); }
+        if (role === "super_admin") { setLoginModal(null); resetL(); setRoute("super-admin"); return; }
+        const salonId = user?.user_metadata?.salon_id;
+        if (salonId && salons[salonId]) { setLoginModal(null); resetL(); setRoute("admin:" + salonId); return; }
+        // Find salon by owner_id
+        const { data } = await supabase.from("salons").select("id").eq("owner_id", user.id).single();
+        if (data) { setLoginModal(null); resetL(); setRoute("admin:" + data.id); }
+        else setLErr("No salon found for this account.");
+      } catch (e) { setLErr(e.message || "Login failed."); }
+    } else {
+      const sids = Object.keys(salons);
+      for (let i = 0; i < sids.length; i++) {
+        const oa = await S.getAccount("oa:" + sids[i]);
+        if (oa && oa.email === lEmail.toLowerCase() && oa.password === lPw) { setLoginModal(null); resetL(); setRoute("admin:" + sids[i]); return; }
+      }
+      setLErr("No matching account.");
     }
-    setLErr("No matching account.");
   };
 
   const custLogin = async () => {
     setLErr(""); if (!lEmail || !lPw) return setLErr("Enter email and password.");
     if (!rateLimiter("cust:" + lEmail)) return setLErr("Too many attempts.");
-    const sids = Object.keys(salons);
-    for (let i = 0; i < sids.length; i++) {
-      const ac = await S.getAccount("ac:" + sids[i] + ":" + lEmail.toLowerCase());
-      if (ac && ac.password === lPw) { await S.setSession("cs:" + sids[i], { loggedIn: true, name: ac.name, phone: ac.phone || "", email: ac.email }); setLoginModal(null); resetL(); setRoute("salon:" + sids[i]); return; }
+    if (supabase) {
+      try {
+        const { user } = await Auth.signIn(lEmail, lPw);
+        const role = user?.user_metadata?.role;
+        if (role !== "customer") { await Auth.signOut(); return setLErr("Not a customer account. Use Business or Staff login."); }
+        const salonId = user?.user_metadata?.salon_id;
+        if (salonId && salons[salonId]) { setLoginModal(null); resetL(); setRoute("salon:" + salonId); }
+        else { setLoginModal(null); resetL(); setRoute("salon:" + Object.keys(salons)[0]); }
+      } catch (e) { setLErr(e.message || "Login failed."); }
+    } else {
+      const sids = Object.keys(salons);
+      for (let i = 0; i < sids.length; i++) {
+        const ac = await S.getAccount("ac:" + sids[i] + ":" + lEmail.toLowerCase());
+        if (ac && ac.password === lPw) { await S.setSession("cs:" + sids[i], { loggedIn: true, name: ac.name, phone: ac.phone || "", email: ac.email }); setLoginModal(null); resetL(); setRoute("salon:" + sids[i]); return; }
+      }
+      setLErr("No account found.");
     }
-    setLErr("No account found.");
   };
 
   const staffLogin = async () => {
     setLErr(""); if (!lEmail || !lPw) return setLErr("Enter email and password.");
     if (!rateLimiter("staff:" + lEmail)) return setLErr("Too many attempts.");
-    const sids = Object.keys(salons);
-    for (const sid of sids) {
-      const sl = salons[sid];
-      for (const st of (sl.staff || [])) {
-        if (st.email === lEmail.toLowerCase()) {
-          const acc = await S.getAccount("st:" + sid + ":" + st.id);
-          if (acc && acc.password === lPw) { setLoginModal(null); resetL(); setRoute("staff:" + sid + ":" + st.id); return; }
+    if (supabase) {
+      try {
+        const { user } = await Auth.signIn(lEmail, lPw);
+        const role = user?.user_metadata?.role;
+        if (role !== "staff") { await Auth.signOut(); return setLErr("Not a staff account."); }
+        const { salon_id, staff_id } = user?.user_metadata || {};
+        if (salon_id && staff_id) { setLoginModal(null); resetL(); setRoute("staff:" + salon_id + ":" + staff_id); }
+        else setLErr("Staff account not linked to a salon.");
+      } catch (e) { setLErr(e.message || "Login failed."); }
+    } else {
+      const sids = Object.keys(salons);
+      for (const sid of sids) {
+        const sl = salons[sid];
+        for (const st of (sl.staff || [])) {
+          if (st.email === lEmail.toLowerCase()) {
+            const acc = await S.getAccount("st:" + sid + ":" + st.id);
+            if (acc && acc.password === lPw) { setLoginModal(null); resetL(); setRoute("staff:" + sid + ":" + st.id); return; }
+          }
         }
       }
+      setLErr("No staff account found.");
     }
-    setLErr("No staff account found.");
+  };
+
+  const superAdminLogin = async () => {
+    setLErr(""); if (!lEmail || !lPw) return setLErr("Enter email and password.");
+    if (supabase) {
+      try {
+        const { user } = await Auth.signIn(lEmail, lPw);
+        const role = user?.user_metadata?.role;
+        if (role !== "super_admin") { await Auth.signOut(); return setLErr("Access denied. Super admin only."); }
+        setLoginModal(null); resetL(); setRoute("super-admin");
+      } catch (e) { setLErr(e.message || "Login failed."); }
+    } else { setLErr("Super admin requires Supabase."); }
   };
 
   const custReg = async () => {
     setLErr(""); if (!lName || !lEmail || !lPw) return setLErr("Fill all fields."); if (lPw.length < 6) return setLErr("Password min 6 chars.");
     const sids = Object.keys(salons); if (!sids.length) return setLErr("No businesses yet.");
-    for (let i = 0; i < sids.length; i++) { const ex = await S.getAccount("ac:" + sids[i] + ":" + lEmail.toLowerCase()); if (ex) return setLErr("Account exists."); }
-    for (let i = 0; i < sids.length; i++) {
-      await S.setAccount("ac:" + sids[i] + ":" + lEmail.toLowerCase(), { name: lName, email: lEmail.toLowerCase(), phone: "", password: lPw });
-      const sl = salons[sids[i]];
-      if (sl && !sl.clients?.find((c) => c.email === lEmail.toLowerCase())) {
-        const u = { ...sl, clients: [...(sl.clients || []), { id: uid(), name: lName, phone: "", email: lEmail.toLowerCase(), visits: 0, lastVisit: "", noShows: 0 }] };
-        await S.saveFullSalon(u); setSalons((p) => ({ ...p, [sids[i]]: u }));
+    if (supabase) {
+      try {
+        await Auth.signUp(lEmail, lPw, { role: "customer", name: lName });
+        // Auto sign in after signup
+        await Auth.signIn(lEmail, lPw);
+        // Add as client to all salons
+        for (const sid of sids) {
+          const sl = salons[sid];
+          if (sl && !sl.clients?.find((c) => c.email === lEmail.toLowerCase())) {
+            const u = { ...sl, clients: [...(sl.clients || []), { id: uid(), name: lName, phone: "", email: lEmail.toLowerCase(), visits: 0, lastVisit: "", noShows: 0 }] };
+            await S.saveFullSalon(u); setSalons((p) => ({ ...p, [sid]: u }));
+          }
+        }
+        setLoginModal(null); resetL(); setRoute("salon:" + sids[0]);
+      } catch (e) { setLErr(e.message || "Registration failed."); }
+    } else {
+      for (let i = 0; i < sids.length; i++) { const ex = await S.getAccount("ac:" + sids[i] + ":" + lEmail.toLowerCase()); if (ex) return setLErr("Account exists."); }
+      for (let i = 0; i < sids.length; i++) {
+        await S.setAccount("ac:" + sids[i] + ":" + lEmail.toLowerCase(), { name: lName, email: lEmail.toLowerCase(), phone: "", password: lPw });
+        const sl = salons[sids[i]];
+        if (sl && !sl.clients?.find((c) => c.email === lEmail.toLowerCase())) {
+          const u = { ...sl, clients: [...(sl.clients || []), { id: uid(), name: lName, phone: "", email: lEmail.toLowerCase(), visits: 0, lastVisit: "", noShows: 0 }] };
+          await S.saveFullSalon(u); setSalons((p) => ({ ...p, [sids[i]]: u }));
+        }
       }
+      await S.setSession("cs:" + sids[0], { loggedIn: true, name: lName, phone: "", email: lEmail.toLowerCase() });
+      setLoginModal(null); resetL(); setRoute("salon:" + sids[0]);
     }
-    await S.setSession("cs:" + sids[0], { loggedIn: true, name: lName, phone: "", email: lEmail.toLowerCase() });
-    setLoginModal(null); resetL(); setRoute("salon:" + sids[0]);
   };
 
   const createSalon = async () => {
@@ -1091,9 +1163,20 @@ export default function App() {
     const cols = ["#1a1a2e", "#0d1b2a", "#2d1b2e"]; const acs = ["#e94560", "#f4a261", "#2ec4b6"];
     const i = Object.keys(salons).length;
     const s = { id: slug, name: nSalon.name, tagline: nSalon.tagline || "Book with us", color: cols[i % 3], accent: acs[i % 3], logo: "\u2702\uFE0F", phone: "", email: nSalon.email, address: "", hours: { mon: "09:00-18:00", tue: "09:00-18:00", wed: "09:00-18:00", thu: "09:00-18:00", fri: "09:00-18:00", sat: "10:00-16:00", sun: "Closed" }, staff: [], services: [], holidays: [], bookings: [], clients: [], reviews: [], waitlist: [], notifications: [], notificationTemplates: [], oohRequests: [], staffHolidays: [], messageLog: [], campaigns: [], notificationSettings: { reminderHours: [24, 2], confirmations: true, cancellationNotify: true, waitlistNotify: true } };
-    await S.saveFullSalon(s);
-    await S.setAccount("oa:" + slug, { email: nSalon.email.toLowerCase(), password: nSalon.password });
-    setSalons((p) => ({ ...p, [slug]: s })); setCreateMode(false); setNSalon({ name: "", tagline: "", email: "", password: "" }); setRoute("admin:" + slug);
+    if (supabase) {
+      try {
+        const { user } = await Auth.signUp(nSalon.email, nSalon.password, { role: "owner", salon_id: slug });
+        // Sign in immediately
+        const { user: signedIn } = await Auth.signIn(nSalon.email, nSalon.password);
+        s.ownerId = signedIn?.id || null;
+        await S.saveFullSalon(s);
+        setSalons((p) => ({ ...p, [slug]: s })); setCreateMode(false); setNSalon({ name: "", tagline: "", email: "", password: "" }); setRoute("admin:" + slug);
+      } catch (e) { setLErr(e.message || "Failed to create account."); return; }
+    } else {
+      await S.saveFullSalon(s);
+      await S.setAccount("oa:" + slug, { email: nSalon.email.toLowerCase(), password: nSalon.password });
+      setSalons((p) => ({ ...p, [slug]: s })); setCreateMode(false); setNSalon({ name: "", tagline: "", email: "", password: "" }); setRoute("admin:" + slug);
+    }
   };
 
   // Sync route to URL hash and clean up query params from PWA launch
@@ -1147,9 +1230,10 @@ export default function App() {
   if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0a0a0a" }}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700&display=swap" rel="stylesheet" /><div style={{ color: "#fff", fontSize: 18, opacity: .5, fontFamily: "'DM Sans'" }}>Loading...</div></div>;
 
   if (route.startsWith("salon:")) { const sl = salons[route.split(":")[1]]; return sl ? <CustomerApp salon={sl} setSalon={updateSalon} /> : <div style={{ padding: 40 }}>Not found</div>; }
-  if (route.startsWith("admin:")) { const sl = salons[route.split(":")[1]]; return sl ? <OwnerDash salon={sl} setSalon={updateSalon} onLogout={() => setRoute("platform")} /> : <div style={{ padding: 40 }}>Not found</div>; }
-  if (route.startsWith("staff:")) { const parts = route.split(":"); const sl = salons[parts[1]]; return sl ? <StaffDash salon={sl} setSalon={updateSalon} staffId={parts[2]} onLogout={() => setRoute("platform")} /> : <div style={{ padding: 40 }}>Not found</div>; }
-  if (route === "super-admin") return <SuperAdminDash salons={salons} onLogout={() => setRoute("platform")} />;
+  const authLogout = async () => { if (supabase) await Auth.signOut(); setRoute("platform"); };
+  if (route.startsWith("admin:")) { const sl = salons[route.split(":")[1]]; return sl ? <OwnerDash salon={sl} setSalon={updateSalon} onLogout={authLogout} /> : <div style={{ padding: 40 }}>Not found</div>; }
+  if (route.startsWith("staff:")) { const parts = route.split(":"); const sl = salons[parts[1]]; return sl ? <StaffDash salon={sl} setSalon={updateSalon} staffId={parts[2]} onLogout={authLogout} /> : <div style={{ padding: 40 }}>Not found</div>; }
+  if (route === "super-admin") return <SuperAdminDash salons={salons} onLogout={authLogout} />;
 
   return (
     <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#fff", fontFamily: "'DM Sans',sans-serif" }}>
@@ -1188,16 +1272,15 @@ export default function App() {
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>{s.logo?.startsWith("data:") ? <img src={s.logo} style={{ width: 48, height: 48, borderRadius: 12, objectFit: "cover" }} /> : <div style={{ fontSize: 36 }}>{s.logo}</div>}<div><h3 style={{ margin: "0 0 4px", fontSize: 20, fontFamily: "'Playfair Display',serif" }}>{s.name}</h3><p style={{ opacity: .5, margin: 0, fontSize: 13 }}>{s.tagline}</p>{avg && <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}><Stars rating={Math.round(Number(avg))} sz={12} /><span style={{ fontSize: 12, opacity: .6 }}>{avg}</span></div>}</div></div>
               <div style={{ display: "flex", gap: 10, marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
                 <button onClick={() => setRoute("salon:" + s.id)} style={{ flex: 1, padding: 12, borderRadius: 12, border: "none", background: s.accent, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Customer View</button>
-                <button onClick={() => setRoute("admin:" + s.id)} style={{ flex: 1, padding: 12, borderRadius: 12, border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Dashboard</button>
+                <button onClick={() => { if (supabase) { setLoginModal("biz-login"); resetL(); } else setRoute("admin:" + s.id); }} style={{ flex: 1, padding: 12, borderRadius: 12, border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Dashboard</button>
               </div>
-              <div style={{ marginTop: 10, fontSize: 11, opacity: .25, textAlign: "center" }}>Demo mode</div>
             </div>;
           })}
         </div>
         {searchQ && !Object.values(salons).some((s) => s.name.toLowerCase().includes(searchQ.toLowerCase()) || s.tagline?.toLowerCase().includes(searchQ.toLowerCase()) || s.address?.toLowerCase().includes(searchQ.toLowerCase()) || (s.services || []).some((sv) => sv.name.toLowerCase().includes(searchQ.toLowerCase()) || sv.category?.toLowerCase().includes(searchQ.toLowerCase()))) && <div style={{ textAlign: "center", padding: "30px 0", opacity: .3, fontSize: 14 }}>No businesses found for "{searchQ}"</div>}
         {/* Super Admin link (hidden) */}
         <div style={{ textAlign: "center", marginTop: 40, marginBottom: 40 }}>
-          <button onClick={() => setRoute("super-admin")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.08)", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>Admin</button>
+          <button onClick={() => { if (supabase) { setLoginModal("super-admin"); resetL(); } else setRoute("super-admin"); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.08)", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>Admin</button>
         </div>
       </div>
 
@@ -1210,6 +1293,8 @@ export default function App() {
       {loginModal === "cust-login" && <Modal title="Customer Login" onClose={() => { setLoginModal(null); resetL(); }}><Inp label="Email" value={lEmail} onChange={(e) => { setLEmail(e.target.value); setLErr(""); }} type="email" /><Inp label="Password" value={lPw} onChange={(e) => { setLPw(e.target.value); setLErr(""); }} type="password" />{lErr && <div style={{ background: "#e74c3c12", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#e74c3c" }}>{lErr}</div>}<Btn full color="#6366f1" onClick={custLogin} style={{ borderRadius: 12 }}>Sign In</Btn><p style={{ fontSize: 12, opacity: .4, textAlign: "center", marginTop: 14 }}>No account? <button onClick={() => { setLoginModal("cust-reg"); resetL(); }} style={{ background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, fontSize: 12 }}>Register</button></p></Modal>}
 
       {loginModal === "cust-reg" && <Modal title="Create Account" onClose={() => { setLoginModal(null); resetL(); }}><Inp label="Name" value={lName} onChange={(e) => { setLName(e.target.value); setLErr(""); }} /><Inp label="Email" value={lEmail} onChange={(e) => { setLEmail(e.target.value); setLErr(""); }} type="email" /><Inp label="Password" value={lPw} onChange={(e) => { setLPw(e.target.value); setLErr(""); }} type="password" placeholder="Min 6 chars" />{lErr && <div style={{ background: "#e74c3c12", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#e74c3c" }}>{lErr}</div>}<Btn full color="#6366f1" onClick={custReg} style={{ borderRadius: 12 }}>Create Account</Btn><p style={{ fontSize: 12, opacity: .4, textAlign: "center", marginTop: 14 }}>Have account? <button onClick={() => { setLoginModal("cust-login"); resetL(); }} style={{ background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, fontSize: 12 }}>Sign In</button></p></Modal>}
+
+      {loginModal === "super-admin" && <Modal title="Super Admin Login" onClose={() => { setLoginModal(null); resetL(); }}><Inp label="Email" value={lEmail} onChange={(e) => { setLEmail(e.target.value); setLErr(""); }} type="email" /><Inp label="Password" value={lPw} onChange={(e) => { setLPw(e.target.value); setLErr(""); }} type="password" />{lErr && <div style={{ background: "#e74c3c12", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#e74c3c" }}>{lErr}</div>}<Btn full color="#e94560" onClick={superAdminLogin} style={{ borderRadius: 12 }}>Sign In</Btn></Modal>}
     </div>
   );
 }
